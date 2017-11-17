@@ -81,13 +81,13 @@ function getNewUpdatedTime(): Promise<string> {
 
   return new Promise((resolve, reject) => {
     fetch(updateQuery)
-    .then(res => res.json())
-    .then(data => {
-      resolve(data.update_time);
-    })
-    .catch(err => {
-      reject(err);
-    });
+      .then(res => res.json())
+      .then(data => {
+        resolve(data.update_time);
+      })
+      .catch(err => {
+        reject(err);
+      });
   });
 }
 
@@ -208,8 +208,9 @@ function markBookmarksRead(
     // Send all requests and check for any that failed
     Promise.all(markReadPromises)
       .then(responses =>
-        Promise.all(responses.map(response => response.json()))
-          .then(responses => {
+        Promise.all(
+          responses.map(response => response.json())
+        ).then(responses => {
           // If any of the fetch requests returned failing, throw an error
           if (responses.filter(res => res.result_code !== "done").length) {
             reject(new Error(JSON.stringify(responses)));
@@ -254,7 +255,9 @@ async function handleClick(): Promise<void> {
 
   const truncatedUnreadBookmarks = unreadBookmarks.slice(0, TAB_COUNT);
 
-  sendNotification(`Opening ${truncatedUnreadBookmarks.length} tabs from pinboard.`);
+  sendNotification(
+    `Opening ${truncatedUnreadBookmarks.length} tabs from pinboard.`
+  );
 
   // Open the bookmarks
   truncatedUnreadBookmarks.map(bookmark =>
