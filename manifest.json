@@ -18,6 +18,7 @@
     "unlimitedStorage",
     "*://*.pinboard.in/*"
   ],
+
   "background": {
     "persistent": false,
     "scripts": [

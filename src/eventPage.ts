@@ -1,4 +1,11 @@
+/**
+ * src/eventPage.ts
+ * 
+ * Main javascript file for the extension.
+ */
+
 const TAB_COUNT = 10; // # of tabs to open from pinboard
+// const AUTH_TOKEN = 'xxxxxx:xxxxxx';
 
 type Bookmark = {
   href: string;
