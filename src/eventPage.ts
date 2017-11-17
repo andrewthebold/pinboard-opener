@@ -1,4 +1,4 @@
-const TAB_COUNT = 10;
+const TAB_COUNT = 10; // # of tabs to open from pinboard
 
 type Bookmark = {
   href: string;
@@ -11,9 +11,9 @@ type Bookmark = {
  * 
  * @returns {Promise<Array<Bookmark>>} 
  */
-function getLocalData(): Promise<Array<Bookmark>> {
+function getLocalBookmarks(): Promise<Array<Bookmark>> {
   return new Promise((resolve, reject) => {
-    chrome.storage.local.get('pinboard', localData => {
+    chrome.storage.local.get("pinboard", localData => {
       if (chrome.runtime.lastError) {
         reject(chrome.runtime.lastError);
       }
@@ -24,14 +24,77 @@ function getLocalData(): Promise<Array<Bookmark>> {
 }
 
 /**
+ * Sets local bookmark data.
+ * 
+ * @param {Array<Bookmark>} bookmarks 
+ * @returns {Promise<void>} 
+ */
+function setLocalBookmarks(bookmarks: Array<Bookmark>): Promise<void> {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.set({ pinboard: bookmarks }, () => {
+      updateBadgeCount();
+      resolve();
+    });
+  });
+}
+
+/**
+ * Returns the current stored last-updated time.
+ * 
+ * @returns {Promise<string>} 
+ */
+function getOldUpdatedTime(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.get("pinboardUpdated", localData => {
+      if (chrome.runtime.lastError) {
+        reject(chrome.runtime.lastError);
+      }
+
+      resolve(localData.pinboardUpdated);
+    });
+  });
+}
+
+/**
+ * Sets the stored last-updated time.
+ * 
+ * @param {string} time 
+ */
+function setOldUpdatedTime(time: string): void {
+  chrome.storage.local.set({ pinboardUpdated: time });
+}
+
+/**
+ * Fetches the new last-updated time from pinboard.
+ * 
+ * @returns {Promise<string>} 
+ */
+function getNewUpdatedTime(): Promise<string> {
+  const updateQuery = `https://api.pinboard.in/v1/posts/update?auth_token=${AUTH_TOKEN}&format=json`;
+
+  return new Promise((resolve, reject) => {
+    fetch(updateQuery)
+    .then(res => res.json())
+    .then(data => {
+      resolve(data.update_time);
+    })
+    .catch(err => {
+      reject(err);
+    });
+  });
+}
+
+/**
  * Updates the badge # on the chrome extension icon.
+ * 
+ * @returns {Promise<void>} 
  */
 async function updateBadgeCount(): Promise<void> {
-  const bookmarks = await getLocalData();
+  const bookmarks = await getLocalBookmarks();
   const count = filterUnread(bookmarks).length;
 
-  chrome.browserAction.setBadgeText({ text: String(count > 0 ? count : '') });
-  chrome.browserAction.setBadgeBackgroundColor({ color: '#000' });
+  chrome.browserAction.setBadgeText({ text: String(count > 0 ? count : "") });
+  chrome.browserAction.setBadgeBackgroundColor({ color: "#000" });
 }
 
 /**
@@ -41,40 +104,42 @@ async function updateBadgeCount(): Promise<void> {
  * @returns {Array<Bookmark>} 
  */
 function filterUnread(bookmarks: Array<Bookmark>): Array<Bookmark> {
-  return bookmarks.filter(item => item.toread === 'yes');
+  return bookmarks.filter(item => item.toread === "yes");
 }
 
 /**
- * Returns a promise for whether or
+ * Sends a chrome notification to the user with a given message.
  * 
- * @returns {Promise<Boolean>} 
+ * @param {string} message 
  */
-function shouldFetchNew(): Promise<Boolean> {
-  return new Promise((resolve, reject) => {
-    chrome.storage.local.get("pinboardUpdated", localData => {
-      const updateQuery = `https://api.pinboard.in/v1/posts/update?auth_token=${AUTH_TOKEN}&format=json`;
-
-      fetch(updateQuery)
-        .then(res => res.json())
-        .then(data => {
-          // Check for new updates from pinboard if the dates are diff.
-          if (localData.pinboardUpdated !== data.update_time) {
-            console.log('Changes have occured to pinboard since last check.');
-
-            // Set the latest time we've updated our local data
-            chrome.storage.local.set({ pinboardUpdated: data.update_time });
-
-            resolve(true);
-          }
-
-          resolve(false);
-        })
-        .catch(err => {
-          console.error('Failed to look for pinboard updates: ', err);
-          reject(err);
-        });
-    });
+function sendNotification(message: string): void {
+  chrome.notifications.create(null, {
+    type: "basic",
+    title: "Pinboard Opener",
+    message: message,
+    iconUrl: "icon.png"
   });
+}
+
+/**
+ * Returns a promise for whether or not to update data
+ * 
+ * @returns {Promise<Boolean>}
+ */
+async function shouldFetchNew(): Promise<Boolean> {
+  // Get the stored updated time
+  const oldUpdated = await getOldUpdatedTime();
+
+  // Fetch the latest updated time
+  const newUpdated = await getNewUpdatedTime();
+
+  if (oldUpdated !== newUpdated) {
+    // Set the latest time we've updated our local data
+    setOldUpdatedTime(newUpdated);
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -92,23 +157,27 @@ function fetchNew(): Promise<void> {
   return new Promise((resolve, reject) => {
     fetch(query)
       .then(response => response.json())
-      .then(data => {
-        chrome.storage.local.set({ pinboard: data }, () => {
-          // Notify that we saved.
-          console.log('New data (all bookmarks) saved from pinboard api.');
-          updateBadgeCount();
-          resolve();
-        });
-      })
+      .then(data => setLocalBookmarks(data))
       .catch(error => {
-        console.error(error);
         reject(error);
       });
   });
 }
 
 /**
- * Marks the given bookmarks are read.
+ * Checks and fetches for new data from pinboard.
+ * 
+ */
+async function updateData(): Promise<void> {
+  const shouldFetch = await shouldFetchNew();
+
+  if (shouldFetch) {
+    await fetchNew();
+  }
+}
+
+/**
+ * Marks the given bookmarks as read.
  * 
  * @param {Array<Bookmark>} bookmarks 
  * @param {Array<Bookmark>} readBookmarks 
@@ -118,55 +187,45 @@ function markBookmarksRead(
   bookmarks: Array<Bookmark>,
   readBookmarks: Array<Bookmark>
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    // Create an array of fetch requests to mark as read (but do not call yet)
-    const markReadPromises = readBookmarks.map(bookmark =>
-      fetch(
-        `https://api.pinboard.in/v1/posts/add?auth_token=${AUTH_TOKEN}&format=json` +
-          `&url=${encodeURIComponent(bookmark.href)}` +
-          `&description=${encodeURIComponent(bookmark.description)}` +
-          `&toread=no` // This is the important mutation
-      )
-    );
+  // Create an array of fetch requests to mark as read (but do not call yet)
+  const markReadPromises = readBookmarks.map(bookmark =>
+    fetch(
+      `https://api.pinboard.in/v1/posts/add?auth_token=${AUTH_TOKEN}&format=json` +
+        `&url=${encodeURIComponent(bookmark.href)}` +
+        `&description=${encodeURIComponent(bookmark.description)}` +
+        `&toread=no` // This is the important mutation
+    )
+  );
 
+  return new Promise((resolve, reject) => {
     // Send all requests and check for any that failed
     Promise.all(markReadPromises)
       .then(responses =>
-        Promise.all(
-          responses.map(response => response.json())
-        ).then(responses => {
-          const failed = responses.filter(
-            response => response.result_code !== 'done'
-          );
-
+        Promise.all(responses.map(response => response.json()))
+          .then(responses => {
           // If any of the fetch requests returned failing, throw an error
-          if (failed.length) {
-            reject();
-            throw new Error(JSON.stringify(responses));
-          } else {
-            // Now update the local data to reflect the changes to unread
-            const clonedBookmarks = JSON.parse(JSON.stringify(bookmarks));
-
-            // In the local store, mark these bookmarks as read
-            readBookmarks.map(bookmark => {
-              const index = clonedBookmarks.findIndex(
-                item => item.description === bookmark.description
-              );
-
-              clonedBookmarks[index].toread = 'no';
-            });
-
-            chrome.storage.local.set({ pinboard: clonedBookmarks }, () => {
-              // Notify that we saved.
-              console.log('New data saved');
-              updateBadgeCount();
-
-              resolve();
-            });
+          if (responses.filter(res => res.result_code !== "done").length) {
+            reject(new Error(JSON.stringify(responses)));
           }
+
+          // Now update the local data to reflect the changes to unread
+          const bookmarksCopy = JSON.parse(JSON.stringify(bookmarks));
+
+          // In the local store, mark these bookmarks as read
+          readBookmarks.map(bookmark => {
+            const index = bookmarksCopy.findIndex(
+              item => item.description === bookmark.description
+            );
+
+            bookmarksCopy[index].toread = "no";
+          });
+
+          setLocalBookmarks(bookmarksCopy);
+
+          resolve();
         })
       )
-      .catch(error => console.error('Failed to mark all as read:', error));
+      .catch(error => reject(error));
   });
 }
 
@@ -176,36 +235,19 @@ function markBookmarksRead(
  * @returns {Promise<void>} 
  */
 async function handleClick(): Promise<void> {
-  const shouldFetch = await shouldFetchNew();
+  await updateData();
 
-  console.group('pinboard opener');
-  console.log('shouldFetch:', shouldFetch);
-
-  if (shouldFetch) {
-    await fetchNew();
-  }
-
-  const bookmarks = await getLocalData();
-
-  console.log('bookmark count #:', bookmarks.length);
-
+  const bookmarks = await getLocalBookmarks();
   const unreadBookmarks = filterUnread(bookmarks);
 
   if (!unreadBookmarks.length) {
-    console.groupEnd();
+    sendNotification(`There aren't any unread bookmarks to open!`);
     return;
   }
 
-  console.log('unread count #:', unreadBookmarks.length);
-
   const truncatedUnreadBookmarks = unreadBookmarks.slice(0, TAB_COUNT);
 
-  chrome.notifications.create(null, {
-    type: 'basic',
-    title: 'Pinboard Opener',
-    message: `Opening ${truncatedUnreadBookmarks.length} tabs from pinboard.`,
-    iconUrl: 'icon.png',
-  });
+  sendNotification(`Opening ${truncatedUnreadBookmarks.length} tabs from pinboard.`);
 
   // Open the bookmarks
   truncatedUnreadBookmarks.map(bookmark =>
@@ -215,27 +257,32 @@ async function handleClick(): Promise<void> {
     })
   );
 
+  // Mark the bookmarks read on pinboard
   await markBookmarksRead(bookmarks, truncatedUnreadBookmarks);
-
-  console.groupEnd();
 }
 
-chrome.browserAction.onClicked.addListener(handleClick);
+/**
+ * Sets up the extension and starts its pinging for new updates.
+ * 
+ */
+function init(): void {
+  // Set initial badge count
+  updateBadgeCount();
 
-async function interval() {
-  console.log('Checking for new updates.');
+  // Setup mouse click listener for extension
+  chrome.browserAction.onClicked.addListener(handleClick);
 
-  const shouldFetch = await shouldFetchNew();
+  // Create and add listener for updates to local pinboard data
+  chrome.alarms.create("pinboard-opener", {
+    when: Date.now() + 1000,
+    periodInMinutes: 5
+  });
 
-  if (shouldFetch) {
-    await fetchNew();
-  } else {
-    console.log('Did not fetch new data.')
-  }
+  chrome.alarms.onAlarm.addListener(alarm => {
+    if (alarm.name === "pinboard-opener") {
+      updateData();
+    }
+  });
 }
 
-// Set initial badge count
-interval();
-updateBadgeCount();
-
-window.setInterval(interval, 1000 * 60 * 5);
+init();
