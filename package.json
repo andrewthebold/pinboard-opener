@@ -1,0 +1,13 @@
+{
+  "name": "pinboard",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "@types/chrome": "^0.0.54",
+    "typescript": "^2.6.1"
+  },
+  "devDependencies": {
+    "@types/es6-promise": "^0.0.33"
+  }
+}
