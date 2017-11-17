@@ -2,7 +2,8 @@
   "manifest_version": 2,
 
   "name": "Pinboard Opener",
-  "description": "This extension opens the 10 most recent unread pinboard items from the user's list.",
+  "description":
+    "This extension opens the 10 most recent unread pinboard items from the user's list.",
   "version": "1.0",
 
   "browser_action": {
@@ -21,9 +22,6 @@
 
   "background": {
     "persistent": false,
-    "scripts": [
-      "src/auth.js",
-      "src/eventPage.js"
-    ]
+    "scripts": ["src/auth.js", "src/eventPage.js"]
   }
 }
