@@ -1,6 +1,12 @@
 # 📍 Pinboard Opener
 
-Chrome extension for [pinboard](https://pinboard.in/) that adds a browser action which opens the 10 most recent unread items from a user's bookmark list.
+Chrome extension for [pinboard](https://pinboard.in/) that adds a browser action which opens the 10 most recent unread items from a user's bookmark list. It checks for new pinboard items every 5 minutes (and updates the badge of unread items).
+
+<br/>
+<p align="center">
+  <img width="700" height="568" src="https://user-images.githubusercontent.com/10323195/32936610-ca6137a0-cb29-11e7-9d97-1e330996ca6d.gif">
+</p>
+<br/>
 
 ---
 
